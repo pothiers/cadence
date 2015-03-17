@@ -1,5 +1,8 @@
-#! /usr/bin/env python3
+#! /usr/bin/env python
 """Calculate the statistics of FITS file generation"""
+
+# EXAMPLE:
+#  ./cadence.py data/cadence-201411.out 
 
 import sys
 import argparse
@@ -12,24 +15,21 @@ from datetime import time
 from datetime import timedelta
 from collections import defaultdict
 
-
-
 # ssh dsan3
 # sudo su -
 # egrep -f /home/pothiers/cadence/patterns.dat /net/mss1/archive/mtn/2014123?/*/*/*.hdr > /home/pothiers/cadence/cadence.out
 
-def plot_moving_avg(cadence_file, interval=3600):
-    '''interval :: average over this interval (seconds)
-    '''
+
+def plot_moving_avg(cadence_file, interval=30*60, start_of_day_hour=17):
+    '''Plot collected mbits/sec
+interval :: average over this interval (seconds)'''
     import matplotlib.pyplot as plt
     import numpy as np
+    from matplotlib.dates import DateFormatter
 
-    moving_average = dict() # ma[elapsed_seconds] = size (mb)
-
+    moving_average = dict() # moving_average[time] = size (mb)
     span = timedelta(seconds=interval)
-
     size, when, st = scrape_hdr_grep(cadence_file)
-    
     times = sorted(st.keys())
     latest = times[0] + span
 
@@ -54,23 +54,49 @@ def plot_moving_avg(cadence_file, interval=3600):
         # Find idx of start of new interval
         while times[prev] <= earliest:
             prev += 1
+
         # remove obsolete values
         for idx in range(old_prev, prev):
             msum -= st[times[idx]]
-        #!print('dbg: smaller msub={}'.format(msum))
+
         msum += st[times[curr]]
-        #!print('dbg: larger msub={}'.format(msum))
-        secs = (times[curr] - times[0]).total_seconds()
-        moving_average[secs] = msum/interval # mbits per seconds
+        moving_average[times[curr]] = msum/interval # mbits per second
         old_earliest = earliest
         old_prev = prev
 
-    x = sorted(moving_average.keys())
-    y = [moving_average[n] for n in x]
-    plt.plot(x,y)
-    plt.show()
+    dt_list = sorted(moving_average.keys())
+    days = set([dt.date() for dt in dt_list])
+    print('dt_list cnt={}, day cnt={}, days[0]={}'
+          .format(len(dt_list), len(days), list(days)[0]))
 
+    plt.figure(figsize=(8,5))
+    plt.hold(True)
+    plt.xlabel('Observation time of day')
+    plt.ylabel('mbits/sec (collect)')
+    formatter = DateFormatter('%H:%M')
+    plt.gcf().axes[0].xaxis.set_major_formatter(formatter)  
+    max_avg = defaultdict(float) # max_avg[time] = mbits/sec
+    for day in days:
+        dts = [dt for dt in dt_list if dt.date() == day]
+        x = [datetime.combine(date(2000,1,1), n.time()) for n in dts]
+        y = [moving_average[n] for n in dts]
+        plt.plot(x,y,label=str(day))
+        #!for idx in range(len(x)):
+        #!    max_avg[x[idx]] = max(max_avg[x[idx]], y[idx])
+
+    #!x = list()
+    #!y = list()
+    #!for xd in sorted(max_avg.keys()):
+    #!    x.append(xd)
+    #!    y.append(max_avg[xd])
+    #!plt.bar(x,y, label='Max over {} days'.format(len(days)))
+    #!plt.legend()
+    plt.title('Moving average (each of {} days) over interval of {} minutes\n'
+              .format(len(days), interval/60))
+    plt.savefig('cadence.pdf', dpi=800)
+    plt.show()
     return moving_average
+
 
 def scrape_hdr_grep(cadence_file):
     """For each file: get size and date/time generated."""
@@ -187,7 +213,8 @@ def main():
                         datefmt='%m-%d %H:%M')
     logging.debug('Debug output is enabled in %s !!!', sys.argv[0])
 
-    scrape_hdr_grep(args.infile)
+    #!scrape_hdr_grep(args.infile)
+    plot_moving_avg(args.infile)
 
 if __name__ == '__main__':
     main()
