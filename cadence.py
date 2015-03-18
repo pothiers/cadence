@@ -15,10 +15,6 @@ from datetime import time
 from datetime import timedelta
 from collections import defaultdict
 
-# ssh dsan3
-# sudo su -
-# egrep -f /home/pothiers/cadence/patterns.dat /net/mss1/archive/mtn/2014123?/*/*/*.hdr > /home/pothiers/cadence/cadence.out
-
 
 def plot_moving_avg(cadence_file, interval=30*60, start_of_day_hour=17):
     '''Plot collected mbits/sec
@@ -103,6 +99,7 @@ def scrape_hdr_grep(cadence_file):
     re_cad = re.compile(r"(?P<filename>[^:]+):(?P<fldname>#?[\w-]+)\s*=\s*(?P<fldvalue>[^/]+)")
     size = dict() # size[filename] = mbytes
     when = dict() # when[filename] = datetime generated
+    where = dict() # where[filename] = observatory
     dt_fmt = '%Y-%m-%dT%H:%M:%S'
     t_fmt = '%H:%M:%S'
     unknown_fields = set()
@@ -154,6 +151,8 @@ def scrape_hdr_grep(cadence_file):
                 continue
             else:
                 when[filename] = dt
+        elif 'OBSERVAT' == m.group('fldname'):
+            where[filename] = m.group('fldvalue').strip().replace("'","")
         else:
             unknown_fields.add(m.group('fldname'))
     
@@ -169,7 +168,7 @@ def scrape_hdr_grep(cadence_file):
                   len(missing)/float(len(size)),
               ))
 
-    st = defaultdict(int) # st[time] = size
+    st = defaultdict(int) # st[time] = size  ## Size by Time
     for fname in size.keys():
         if fname not in when:
             continue
